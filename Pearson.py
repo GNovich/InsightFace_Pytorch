@@ -42,14 +42,14 @@ def pearsonr2d(x, y):
 def pearson_corr_loss(eta_hat, labels, apply_topk=False):
     n_models, _, num_classes = eta_hat.shape
     orig_mask = torch.nn.functional.one_hot(labels, num_classes=num_classes)
-    mask = (1 - orig_mask).type(torch.uint8)
+    mask = (1 - orig_mask).type(torch.bool)
 
     wrong_classes_outputs = [torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1))
                              for i in
                              range(len(eta_hat))]
 
     wrong_classes_indicator = [
-        torch.masked_select(torch.softmax(eta_hat[i], 1), orig_mask.type(torch.uint8)).reshape(
+        torch.masked_select(torch.softmax(eta_hat[i], 1), orig_mask.type(torch.bool)).reshape(
             (-1, 1)) - torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1)) - 0.9
         for i in range(len(eta_hat))]
 
