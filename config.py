@@ -2,6 +2,7 @@ from easydict import EasyDict as edict
 from pathlib import Path
 import torch
 from torch.nn import CrossEntropyLoss
+from Pearson import pearson_corr_loss
 from torchvision import transforms as trans
 
 def get_config(training = True):
@@ -39,7 +40,10 @@ def get_config(training = True):
         conf.pin_memory = True
 #         conf.num_workers = 4 # when batchsize is 200
         conf.num_workers = 3
-        conf.ce_loss = CrossEntropyLoss()    
+        conf.ce_loss = CrossEntropyLoss()
+
+        # ganovich - change to pearson loss
+        conf.pearson_loss = pearson_corr_loss
 #--------------------Inference Config ------------------------
     else:
         conf.facebank_path = conf.data_path/'facebank'
