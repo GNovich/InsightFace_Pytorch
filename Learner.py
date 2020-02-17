@@ -184,8 +184,8 @@ class face_learner(object):
     def train(self, conf, epochs):
         self.model.train()
         # mult. gpu. fix. start. based on: https://github.com/TreB1eN/InsightFace_Pytorch/issues/32        	
-        conf.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = torch.nn.DataParallel(self.model,device_ids=[0,1,2,3])
+        if not conf.cpu_mode:
+            self.model = torch.nn.DataParallel(self.model,device_ids=[0,1,2,3])
         self.model.to(conf.device)
         # mult. gpu. fix. end.
         running_loss = 0.            
