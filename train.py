@@ -2,6 +2,8 @@ from config import get_config
 from Learner_corr import face_learner as face_learner_corr
 from Learner import face_learner
 import argparse
+import torch
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='for face verification')
@@ -17,8 +19,10 @@ if __name__ == '__main__':
     parser.add_argument("-n", "--n_models", help="how many duplicate nets to use. 1 leads to basic training, "
                                                  "making -a and -p flags redundant", default=1, type=int)
     # TODO maybe add option to specify a network mix instead of duplicates
+    parser.add_argument("-m", "--milestones", help="epoch list where lr will be tuned", default=[12, 15, 18], type=list)
     parser.add_argument("-a", "--alpha", help="balancing parameter", default=0.5, type=float)
     parser.add_argument("-p", "--pearson", help="using pearson or mean", default=True, type=bool)
+    parser.add_argument("-c", "--cpu_mode", help="force cpu mode", default=False, type=bool)
 
     args = parser.parse_args()
     conf = get_config()
@@ -30,10 +34,13 @@ if __name__ == '__main__':
         conf.net_depth = args.net_depth
 
     # ganovich - added some parameters
+    conf.milestones = args.milestones
     conf.alpha = args.alpha
     conf.n_models = args.n_models
     conf.n_models = args.n_models
     conf.pearson = args.pearson
+    conf.cpu_mode = args.cpu_mode
+    conf.device = torch.device("cuda:0" if (torch.cuda.is_available() and not conf.cpu_mode) else "cpu")
 
     conf.lr = args.lr
     conf.batch_size = args.batch_size
