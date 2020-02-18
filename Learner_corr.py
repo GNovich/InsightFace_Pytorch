@@ -260,12 +260,14 @@ class face_learner(object):
                     running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * sum(joint_losses) + alpha * pearson_corr_models_loss
-                else:
+                elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
                     running_pearson_loss += ensemble_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * sum(joint_losses) * 0.5 + alpha * ensemble_loss
+                else:
+                    loss = sum(joint_losses)
 
                 loss.backward()
                 running_loss += loss.item()

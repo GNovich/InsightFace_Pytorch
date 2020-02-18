@@ -21,7 +21,8 @@ if __name__ == '__main__':
     # TODO maybe add option to specify a network mix instead of duplicates
     parser.add_argument("-m", "--milestones", help="epoch list where lr will be tuned", default=[12, 15, 18], type=list)
     parser.add_argument("-a", "--alpha", help="balancing parameter", default=0.5, type=float)
-    parser.add_argument("-p", "--pearson", help="using pearson or mean", default=True, type=bool)
+    parser.add_argument("-p", "--pearson", help="using pearson loss", default=False, type=bool)
+    parser.add_argument("-mean", "--joint_mean", help="using mean loss", default=False, type=bool)
     parser.add_argument("-c", "--cpu_mode", help="force cpu mode", default=False, type=bool)
 
     args = parser.parse_args()
@@ -39,6 +40,7 @@ if __name__ == '__main__':
     conf.n_models = args.n_models
     conf.n_models = args.n_models
     conf.pearson = args.pearson
+    conf.joint_mean = args.joint_mean
     conf.cpu_mode = args.cpu_mode
     conf.device = torch.device("cuda:0" if (torch.cuda.is_available() and not conf.cpu_mode) else "cpu")
 
