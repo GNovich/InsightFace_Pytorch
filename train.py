@@ -20,7 +20,7 @@ if __name__ == '__main__':
                                                  "making -a and -p flags redundant", default=1, type=int)
     # TODO maybe add option to specify a network mix instead of duplicates
     parser.add_argument("-m", "--milestones", help="epoch list where lr will be tuned", default=[12, 15, 18], type=list)
-    parser.add_argument("-a", "--alpha", help="balancing parameter", default=0.5, type=float)
+    parser.add_argument("-a", "--alpha", help="balancing parameter", default=1, type=float)
     parser.add_argument("-p", "--pearson", help="using pearson loss", default=False, type=bool)
     parser.add_argument("-mean", "--joint_mean", help="using mean loss", default=False, type=bool)
     parser.add_argument("-c", "--cpu_mode", help="force cpu mode", default=False, type=bool)

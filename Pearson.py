@@ -57,7 +57,7 @@ def pearson_corr_loss(eta_hat, labels, apply_topk=False):
                                range(len(eta_hat))]
 
     # ganovich - change to combination
-    pearson_corr = 0
+    pearson_corr = torch.tensor(0)
     for i, j in combinations(range(n_models), 2):
         relevant_locs = wrong_classes_indicator[i] + wrong_classes_indicator[j]
         pairwise_corr = pearsonr2d(wrong_classes_outputs[i], wrong_classes_outputs[j])
@@ -67,5 +67,5 @@ def pearson_corr_loss(eta_hat, labels, apply_topk=False):
         pairwise_corr = pairwise_corr.sum() / (relevant_locs.shape[0] + 0.0001)
         pearson_corr += pairwise_corr
 
-    pearson_corr /= comb(n_models, 2)
+    pearson_corr /= max(comb(n_models, 2), 1)
     return pearson_corr
