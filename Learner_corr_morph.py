@@ -12,6 +12,7 @@ from PIL import Image
 from torchvision import transforms as trans
 import math
 import bcolz
+from torch.autograd import Variable
 plt.switch_backend('agg')
 
 
@@ -163,12 +164,13 @@ class face_learner(object):
         batch_num = 0
         losses = []
         log_lrs = []
-        for i, (imgs, labels) in tqdm(enumerate(self.loader), total=num):
+        for i, (imgs, labels, morphs) in tqdm(enumerate(self.loader), total=num): # TODO expand to morph loader
 
             imgs = imgs.to(conf.device)
             labels = labels.to(conf.device)
-            batch_num += 1
+            morphs = Variable(morphs) if morphs[0, 0, 0, 0] < 100 else morphs.to(conf.device)
 
+            batch_num += 1
             self.optimizer.zero_grad()
 
             # ganovich - expand to mult models: start
@@ -260,12 +262,14 @@ class face_learner(object):
                     running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * sum(joint_losses) + alpha * pearson_corr_models_loss
-                else:
+                elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
                     running_pearson_loss += ensemble_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * sum(joint_losses) * 0.5 + alpha * ensemble_loss
+                else:
+                    loss = sum(joint_losses)
 
                 loss.backward()
                 running_loss += loss.item()

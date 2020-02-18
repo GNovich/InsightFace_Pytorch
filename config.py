@@ -1,6 +1,6 @@
 from easydict import EasyDict as edict
 from pathlib import Path
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, MSELoss
 from Pearson import pearson_corr_loss
 from torchvision import transforms as trans
 
@@ -41,6 +41,7 @@ def get_config(training=True):
 
         # ganovich - change to pearson loss
         conf.pearson_loss = pearson_corr_loss
+        conf.morph_loss = MSELoss()
     # --------------------Inference Config ------------------------
     else:
         conf.facebank_path = conf.data_path / 'facebank'

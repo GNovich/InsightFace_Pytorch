@@ -39,24 +39,33 @@ class face_learner(object):
 
             print('two model heads generated')
 
-            paras_only_bn, paras_wo_bn = separate_bn_paras(self.models)  # already supports list!
+            paras_only_bn = []
+            paras_wo_bn = []
+            for model in self.models:
+                paras_only_bn_, paras_wo_bn_ = separate_bn_paras(model)
+                paras_only_bn.append(paras_only_bn_)
+                paras_wo_bn.append(paras_wo_bn_)
 
             if conf.use_mobilfacenet:
                 self.optimizer = optim.SGD([
-                                               {'params': paras_wo_bn[:-1], 'weight_decay': 4e-5},
-                                               {'params': paras_only_bn}
+                                               {'params': paras_only_bn[model_num]}
+                                               for model_num in range(conf.n_models)
                                            ] + [
-                                               {'params': [paras_wo_bn[-1]] + [self.heads[head_num].kernel],
+                                               {'params': paras_wo_bn[model_num][:-1], 'weight_decay': 4e-5}
+                                               for model_num in range(conf.n_models)
+                                           ] + [
+                                               {'params': [paras_wo_bn[head_num][-1]] + [self.heads[head_num].kernel],
                                                 'weight_decay': 4e-4}
                                                for head_num in range(conf.n_models)
                                            ], lr=conf.lr, momentum=conf.momentum)
             else:
                 self.optimizer = optim.SGD([
-                                               {'params': paras_only_bn}
-                                           ] + [
-                                               {'params': paras_wo_bn + [self.heads[head_num].kernel],
+                                               {'params': paras_wo_bn[head_num] + [self.heads[head_num].kernel],
                                                 'weight_decay': 5e-4}
                                                for head_num in range(conf.n_models)
+                                           ] + [
+                                               {'params': paras_only_bn[model_num]}
+                                               for model_num in range(conf.n_models)
                                            ], lr=conf.lr, momentum=conf.momentum)
             print(self.optimizer)
             # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
