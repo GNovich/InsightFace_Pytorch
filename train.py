@@ -48,6 +48,6 @@ if __name__ == '__main__':
     conf.batch_size = args.batch_size
     conf.num_workers = args.num_workers
     conf.data_mode = args.data_mode
-    learner = face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
+    learner = face_learner_corr(conf)  # face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
 
     learner.train(conf, args.epochs)
