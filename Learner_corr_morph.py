@@ -12,7 +12,7 @@ from PIL import Image
 from torchvision import transforms as trans
 import math
 import bcolz
-from torch.autograd import Variable
+from itertools import zip_longest
 plt.switch_backend('agg')
 
 
@@ -31,7 +31,12 @@ class face_learner(object):
         self.inference = inference
         if not inference:
             self.milestones = conf.milestones
-            self.loader, self.class_num = get_train_loader(conf)
+
+            if conf.morph_dir:
+                self.loader, self.class_num, self.morph_loader = get_train_loader(conf)
+            else:
+                self.loader, self.class_num = get_train_loader(conf)
+                self.morph_loader = None
 
             self.writer = SummaryWriter(conf.log_path)
             self.step = 0
@@ -164,35 +169,61 @@ class face_learner(object):
         batch_num = 0
         losses = []
         log_lrs = []
-        for i, (imgs, labels, morphs) in tqdm(enumerate(self.loader), total=num): # TODO expand to morph loader
+        data_iter = zip_longest(self.loader, self.morph_loader or iter([]))
+        for i, ((imgs, labels), morphs) in tqdm(enumerate(data_iter), total=num):  # TODO expand to morph loader
 
             imgs = imgs.to(conf.device)
             labels = labels.to(conf.device)
-            morphs = Variable(morphs) if morphs[0, 0, 0, 0] < 100 else morphs.to(conf.device)
+
+            use_morph = (conf.morph_dir and morphs[0, 0, 0, 0] < 100)
+            # this is an inheritance hack in the loader TODO replace with a better one
+            if use_morph:
+                morphs = morphs.to(conf.device)
 
             batch_num += 1
             self.optimizer.zero_grad()
 
-            # ganovich - expand to mult models: start
+            # calc embeddings
             thetas = []
             joint_losses = []
+            morph_thetas = []
             for model, head in zip(self.models, self.heads):
                 embedding = model(imgs)
                 theta = head(embedding, labels)
                 thetas.append(theta)
                 joint_losses.append(conf.ce_loss(theta, labels))
 
+                if use_morph:  # use all modoles execpt the 1st
+                    morph_thetas.append(head(model(morphs), labels))
+
+            joint_losses = sum(joint_losses) / len(joint_losses)
+            morph_thetas = morph_thetas[1:]
+
+            # calc loss
             if conf.pearson:
                 outputs = torch.stack(thetas)
                 pearson_corr_models_loss = conf.pearson_loss(outputs, labels, apply_topk=False)
                 alpha = conf.alpha
-                loss = (1 - alpha) * sum(joint_losses) + alpha * pearson_corr_models_loss
-            else:
+                loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
+            elif conf.joint_mean:
                 mean_output = torch.mean(torch.stack(thetas), 0)
                 ensemble_loss = conf.ce_loss(mean_output, labels)
                 alpha = conf.alpha
-                loss = (1 - alpha) * sum(joint_losses) * 0.5 + alpha * ensemble_loss
-            # ganovich - expand to mult models: end
+                loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
+            else:
+                loss = joint_losses
+
+            # Morph loss
+            if use_morph:
+                morph_loss = 0
+                for morph_theta in morph_thetas:
+                    mask = torch.nn.functional.one_hot(labels, num_classes=morph_theta.shape[-1]).type(torch.bool)
+                    # outputs_morph = torch.softmax(morph_theta, 1)
+                    correct_values = torch.masked_select(morph_theta, mask)
+                    average_values = morph_theta.mean(1)
+                    morph_loss += conf.morph_loss(correct_values, average_values)
+                morph_loss /= max(len(morph_thetas), 1)
+                loss = loss + (conf.morph_alpha * morph_loss)
 
             # Compute the smoothed loss
             avg_loss = beta * avg_loss + (1 - beta) * loss.item()
@@ -247,29 +278,57 @@ class face_learner(object):
             for imgs, labels in tqdm(iter(self.loader)):
                 imgs = imgs.to(conf.device)
                 labels = labels.to(conf.device)
+
+                use_morph = (morphs[0, 0, 0, 0] < 100 and conf.morph_dir)
+                # this is an inheritance hack in the loader TODO replace with a better one
+                if use_morph:
+                    morphs = morphs.to(conf.device)
+
                 self.optimizer.zero_grad()
 
+                # calc embeddings
                 thetas = []
                 joint_losses = []
-                for modle, head in zip(self.models, self.heads):
-                    theta = head(modle(imgs), labels)
+                morph_thetas = []
+                for model, head in zip(self.models, self.heads):
+                    embedding = model(imgs)
+                    theta = head(embedding, labels)
                     thetas.append(theta)
                     joint_losses.append(conf.ce_loss(theta, labels))
 
+                    if use_morph:  # use all modoles execpt the 1st
+                        morph_thetas.append(head(model(morphs), labels))
+
+                joint_losses = sum(joint_losses) / len(joint_losses)
+                morph_thetas = morph_thetas[1:]
+
+                # calc loss
                 if conf.pearson:
                     outputs = torch.stack(thetas)
                     pearson_corr_models_loss = conf.pearson_loss(outputs, labels, apply_topk=False)
                     running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
-                    loss = (1 - alpha) * sum(joint_losses) + alpha * pearson_corr_models_loss
+                    loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
                 elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
                     running_pearson_loss += ensemble_loss.item()
                     alpha = conf.alpha
-                    loss = (1 - alpha) * sum(joint_losses) * 0.5 + alpha * ensemble_loss
+                    loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
                 else:
-                    loss = sum(joint_losses)
+                    loss = joint_losses
+
+                # Morph loss
+                if use_morph:
+                    morph_loss = 0
+                    for morph_theta in morph_thetas:
+                        mask = torch.nn.functional.one_hot(labels, num_classes=morph_theta.shape[-1]).type(torch.bool)
+                        # outputs_morph = torch.softmax(morph_theta, 1)
+                        correct_values = torch.masked_select(morph_theta, mask)
+                        average_values = morph_theta.mean(1)
+                        morph_loss += conf.morph_loss(correct_values, average_values)
+                    morph_loss /= max(len(morph_thetas), 1)
+                    loss = loss + (conf.morph_alpha * morph_loss)
 
                 loss.backward()
                 running_loss += loss.item()

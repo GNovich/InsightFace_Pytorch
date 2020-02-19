@@ -180,26 +180,27 @@ class face_learner(object):
 
             self.optimizer.zero_grad()
 
-            # ganovich - expand to mult models: start
+            # calc embeddings
             thetas = []
             joint_losses = []
             for model, head in zip(self.models, self.heads):
-                embedding = model(imgs)
-                theta = head(embedding, labels)
+                theta = head(model(imgs), labels)
                 thetas.append(theta)
                 joint_losses.append(conf.ce_loss(theta, labels))
 
+            # calc loss
             if conf.pearson:
                 outputs = torch.stack(thetas)
-                pearson_corr_models_loss = conf.pearson_loss(outputs, labels, apply_topk=False)
+                pearson_corr_models_loss = conf.pearson_loss(outputs, labels)
                 alpha = conf.alpha
-                loss = (1 - alpha) * sum(joint_losses) + alpha * pearson_corr_models_loss
-            else:
+                loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
+            elif conf.joint_mean:
                 mean_output = torch.mean(torch.stack(thetas), 0)
                 ensemble_loss = conf.ce_loss(mean_output, labels)
                 alpha = conf.alpha
-                loss = (1 - alpha) * sum(joint_losses) * 0.5 + alpha * ensemble_loss
-            # ganovich - expand to mult models: end
+                loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
+            else:
+                loss = joint_losses
 
             # Compute the smoothed loss
             avg_loss = beta * avg_loss + (1 - beta) * loss.item()
@@ -256,27 +257,30 @@ class face_learner(object):
                 labels = labels.to(conf.device)
                 self.optimizer.zero_grad()
 
+                # calc embeddings
                 thetas = []
                 joint_losses = []
                 for modle, head in zip(self.models, self.heads):
                     theta = head(modle(imgs), labels)
                     thetas.append(theta)
                     joint_losses.append(conf.ce_loss(theta, labels))
+                joint_losses = sum(joint_losses) / len(joint_losses)
 
+                # calc loss
                 if conf.pearson:
                     outputs = torch.stack(thetas)
-                    pearson_corr_models_loss = conf.pearson_loss(outputs, labels, apply_topk=False)
+                    pearson_corr_models_loss = conf.pearson_loss(outputs, labels)
                     running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
-                    loss = (1 - alpha) * sum(joint_losses) + alpha * pearson_corr_models_loss
+                    loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
                 elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
                     running_pearson_loss += ensemble_loss.item()
                     alpha = conf.alpha
-                    loss = (1 - alpha) * sum(joint_losses) * 0.5 + alpha * ensemble_loss
+                    loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
                 else:
-                    loss = sum(joint_losses)
+                    loss = joint_losses
 
                 loss.backward()
                 running_loss += loss.item()

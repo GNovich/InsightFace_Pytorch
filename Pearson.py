@@ -39,7 +39,7 @@ def pearsonr2d(x, y):
     return r_val
 
 
-def pearson_corr_loss(eta_hat, labels, apply_topk=False):
+def pearson_corr_loss(eta_hat, labels, threshold=0.9):
     n_models, _, num_classes = eta_hat.shape
     if n_models < 2:
         return torch.tensor(0)
@@ -53,7 +53,7 @@ def pearson_corr_loss(eta_hat, labels, apply_topk=False):
 
     wrong_classes_indicator = [
         torch.masked_select(torch.softmax(eta_hat[i], 1), orig_mask.type(torch.bool)).reshape(
-            (-1, 1)) - torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1)) - 0.9
+            (-1, 1)) - torch.masked_select(torch.softmax(eta_hat[i], 1), mask).reshape((-1, num_classes - 1)) - threshold
         for i in range(len(eta_hat))]
 
     wrong_classes_indicator = [torch.relu(-torch.min(wrong_classes_indicator[i], 1).values) for i in
@@ -64,8 +64,8 @@ def pearson_corr_loss(eta_hat, labels, apply_topk=False):
     for i, j in combinations(range(n_models), 2):
         relevant_locs = wrong_classes_indicator[i] + wrong_classes_indicator[j]
         pairwise_corr = pearsonr2d(wrong_classes_outputs[i], wrong_classes_outputs[j])
-        pairwise_corr = pairwise_corr[relevant_locs > 0.001]
-        relevant_locs = relevant_locs[relevant_locs > 0.001]
+        pairwise_corr = pairwise_corr[relevant_locs > 0.]
+        relevant_locs = relevant_locs[relevant_locs > 0.]
 
         pairwise_corr = pairwise_corr.sum() / (relevant_locs.shape[0] + 0.0001)
         pearson_corr += pairwise_corr
