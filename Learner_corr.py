@@ -244,6 +244,7 @@ class face_learner(object):
 
         running_loss = 0.
         running_pearson_loss = 0.  # ganovich pearson loss
+        running_ensemble_loss = 0.
         for e in range(epochs):
             print('epoch {} started'.format(e))
             if e == self.milestones[0]:
@@ -276,7 +277,7 @@ class face_learner(object):
                 elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
-                    running_pearson_loss += ensemble_loss.item()
+                    running_ensemble_loss += ensemble_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
                 else:
@@ -295,6 +296,11 @@ class face_learner(object):
                         loss_board = running_pearson_loss / self.board_loss_every
                         self.writer.add_scalar('pearson_loss', loss_board, self.step)
                         running_pearson_loss = 0.
+
+                    if conf.joint_mean:
+                        loss_board = running_ensemble_loss / self.board_loss_every
+                        self.writer.add_scalar('ensemble_loss', loss_board, self.step)
+                        running_ensemble_loss = 0.
 
                 # ganovich - listening to many models
                 for model_num in range(conf.n_models):

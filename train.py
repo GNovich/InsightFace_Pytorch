@@ -1,4 +1,5 @@
 from config import get_config
+from Learner_corr_morph import face_learner as face_learner_corr_morph
 from Learner_corr import face_learner as face_learner_corr
 from Learner import face_learner
 import argparse
@@ -21,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument("-n", "--n_models", help="how many duplicate nets to use. 1 leads to basic training, "
                                                  "making -a and -p flags redundant", default=1, type=int)
     # TODO maybe add option to specify a network mix instead of duplicates
-    parser.add_argument("-m", "--milestones", help="epoch list where lr will be tuned", default=[12, 15, 18], type=list)
+    parser.add_argument("-m", "--milestones", help="epoch list where lr will be tuned", default=[12, 15, 18], type=int, nargs='*')
     parser.add_argument("-a", "--alpha", help="balancing parameter", default=0, type=float)
     parser.add_argument("-t", "--sig_thresh", help="thresholding of the most correct class", default=0.9, type=float)
     parser.add_argument("-p", "--pearson", help="using pearson loss", default=False, type=bool)
@@ -65,5 +66,6 @@ if __name__ == '__main__':
     conf.morph_loss = MSELoss()
 
     # create learner and go
-    learner = face_learner_corr(conf)  # face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
+    learner = face_learner_corr(conf) if not conf.morph_dir else face_learner_corr_morph(conf)
+    # face_learner(conf) if conf.n_models == 1 else face_learner_corr(conf)
     learner.train(conf, args.epochs)

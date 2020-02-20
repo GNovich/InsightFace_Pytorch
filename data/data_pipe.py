@@ -10,6 +10,7 @@ import pickle
 import torch
 import mxnet as mx
 from tqdm import tqdm
+from itertools import islice, cycle
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
@@ -26,19 +27,6 @@ def get_train_dataset(imgs_folder):
     ds = ImageFolder(imgs_folder, train_transform)
     class_num = ds[-1][1] + 1
     return ds, class_num
-
-
-def get_morph_dataset(imgs_folder):
-    morph_transform = trans.Compose([
-        trans.Resize((256, 128), interpolation=3),
-        trans.Pad(10),
-        trans.RandomCrop((256, 128)),
-        trans.RandomHorizontalFlip(),
-        trans.ToTensor(),
-        trans.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-    ds = ImageFolder(imgs_folder, morph_transform)
-    return ds
 
 
 def get_train_loader(conf):
@@ -67,7 +55,7 @@ def get_train_loader(conf):
                         drop_last=True)  # deal with unconventional batch sizes
 
     if conf.morph_dir:
-        ds = get_morph_dataset(conf.morph_dir)
+        ds, _ = get_train_dataset(conf.morph_dir)
         morph_loader = DataLoader(ds, batch_size=conf.batch_size, shuffle=True,
                             pin_memory=conf.pin_memory, num_workers=conf.num_workers,
                             drop_last=True)  # deal with unconventional batch sizes

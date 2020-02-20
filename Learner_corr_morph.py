@@ -169,13 +169,22 @@ class face_learner(object):
         batch_num = 0
         losses = []
         log_lrs = []
-        data_iter = zip_longest(self.loader, self.morph_loader or iter([]))
-        for i, ((imgs, labels), morphs) in tqdm(enumerate(data_iter), total=num):  # TODO expand to morph loader
+        morph_iter = iter(self.morph_loader)
+        morph_load = bool(conf.morph_dir)
+        for i, (imgs, labels) in tqdm(enumerate(self.loader), total=num):  # TODO expand to morph loader
 
             imgs = imgs.to(conf.device)
             labels = labels.to(conf.device)
 
-            use_morph = (conf.morph_dir and morphs[0, 0, 0, 0] < 100)
+            # moprh_inf_loop
+            if morph_load:
+                try:
+                    morphs, morph_labels = next(morph_iter)
+                except StopIteration:
+                    morph_iter = iter(self.morph_loader)
+                    morphs, morph_labels = next(morph_iter)
+
+            use_morph = (morph_load and morphs[0, 0, 0, 0] < 100).item()
             # this is an inheritance hack in the loader TODO replace with a better one
             if use_morph:
                 morphs = morphs.to(conf.device)
@@ -266,7 +275,10 @@ class face_learner(object):
             # ganovich mult. gpu. fix. end.
 
         running_loss = 0.
-        running_pearson_loss = 0.  # ganovich pearson loss
+        running_pearson_loss = 0.
+        running_morph_loss = 0.
+        morph_iter = iter(self.morph_loader)
+        morph_load = bool(conf.morph_dir)
         for e in range(epochs):
             print('epoch {} started'.format(e))
             if e == self.milestones[0]:
@@ -275,14 +287,23 @@ class face_learner(object):
                 self.schedule_lr()
             if e == self.milestones[2]:
                 self.schedule_lr()
-            for imgs, labels in tqdm(iter(self.loader)):
+            for imgs, labels in tqdm(self.loader):
                 imgs = imgs.to(conf.device)
                 labels = labels.to(conf.device)
 
-                use_morph = (morphs[0, 0, 0, 0] < 100 and conf.morph_dir)
+                # moprh_inf_loop
+                if morph_load:
+                    try:
+                        morphs, morph_labels = next(morph_iter)
+                    except StopIteration:
+                        morph_iter = iter(self.morph_loader)
+                        morphs, morph_labels = next(morph_iter)
+
+                use_morph = (morph_load and morphs[0, 0, 0, 0] < 100).item()
                 # this is an inheritance hack in the loader TODO replace with a better one
                 if use_morph:
                     morphs = morphs.to(conf.device)
+                    morph_labels = morph_labels.to(conf.device)
 
                 self.optimizer.zero_grad()
 
@@ -296,11 +317,10 @@ class face_learner(object):
                     thetas.append(theta)
                     joint_losses.append(conf.ce_loss(theta, labels))
 
-                    if use_morph:  # use all modoles execpt the 1st
-                        morph_thetas.append(head(model(morphs), labels))
+                    if use_morph:
+                        morph_thetas.append(head(model(morphs), morph_labels))
 
                 joint_losses = sum(joint_losses) / len(joint_losses)
-                morph_thetas = morph_thetas[1:]
 
                 # calc loss
                 if conf.pearson:
@@ -319,16 +339,19 @@ class face_learner(object):
                     loss = joint_losses
 
                 # Morph loss
+                # Make sure models do not produce the same results as the morphs
                 if use_morph:
                     morph_loss = 0
                     for morph_theta in morph_thetas:
-                        mask = torch.nn.functional.one_hot(labels, num_classes=morph_theta.shape[-1]).type(torch.bool)
+                        mask = torch.nn.functional.one_hot(morph_labels, num_classes=morph_theta.shape[-1]).type(torch.bool)
                         # outputs_morph = torch.softmax(morph_theta, 1)
                         correct_values = torch.masked_select(morph_theta, mask)
                         average_values = morph_theta.mean(1)
                         morph_loss += conf.morph_loss(correct_values, average_values)
                     morph_loss /= max(len(morph_thetas), 1)
-                    loss = loss + (conf.morph_alpha * morph_loss)
+                    morph_loss *= conf.morph_alpha
+                    running_morph_loss += morph_loss.item()
+                    loss = loss + morph_loss
 
                 loss.backward()
                 running_loss += loss.item()
@@ -343,6 +366,11 @@ class face_learner(object):
                         loss_board = running_pearson_loss / self.board_loss_every
                         self.writer.add_scalar('pearson_loss', loss_board, self.step)
                         running_pearson_loss = 0.
+
+                    if conf.morph_dir:
+                        loss_board = running_morph_loss / self.board_loss_every
+                        self.writer.add_scalar('morph_loss', loss_board, self.step)
+                        running_morph_loss = 0.
 
                 # ganovich - listening to many models
                 for model_num in range(conf.n_models):
