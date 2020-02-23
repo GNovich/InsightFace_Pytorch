@@ -11,6 +11,7 @@ from utils import get_time, gen_plot, hflip_batch, separate_bn_paras
 from PIL import Image
 from torchvision import transforms as trans
 import math
+from Pearson import set_bn_eval
 import bcolz
 from itertools import zip_longest
 plt.switch_backend('agg')
@@ -26,6 +27,7 @@ class face_learner(object):
         else:
             self.models = [Backbone(conf.net_depth, conf.drop_ratio, conf.net_mode).to(conf.device) for _ in
                            range(conf.n_models)]
+
             print('{}_{} models generated'.format(conf.net_mode, conf.net_depth))
 
         self.inference = inference
@@ -174,6 +176,7 @@ class face_learner(object):
 
         for model in self.models:
             model.train()
+            if conf.morph_dir: set_bn_eval(model)
 
         avg_loss = 0.
         best_loss = 0.
@@ -238,7 +241,6 @@ class face_learner(object):
                 morph_loss = 0
                 for morph_theta in morph_thetas:
                     mask = torch.nn.functional.one_hot(labels, num_classes=morph_theta.shape[-1]).type(torch.bool)
-                    # outputs_morph = torch.softmax(morph_theta, 1)
                     correct_values = torch.masked_select(morph_theta, mask)
                     average_values = morph_theta.mean(1)
                     morph_loss += conf.morph_loss(correct_values, average_values)
@@ -278,6 +280,7 @@ class face_learner(object):
     def train(self, conf, epochs):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
+            if conf.morph_dir: set_bn_eval(self.models[model_num])
 
             if conf.resume:
                 if not conf.fixed_str:
@@ -411,6 +414,7 @@ class face_learner(object):
                                                                                    model_num=model_num)
                         self.board_val('mod_{}_cfp_fp'.format(model_num), accuracy, best_threshold, roc_curve_tensor)
                         self.models[model_num].train()
+                        if conf.morph_dir: set_bn_eval(self.models[model_num])
                     if self.step % self.save_every == 0 and self.step != 0:
                         self.save_state(conf, accuracy)
 

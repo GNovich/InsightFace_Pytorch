@@ -72,3 +72,11 @@ def pearson_corr_loss(eta_hat, labels, threshold=0.9):
 
     pearson_corr /= comb(n_models, 2)
     return pearson_corr
+
+
+def set_bn_eval(m):
+    classname = m.__class__.__name__
+    if classname.find('BatchNorm2d') != -1:
+        m.eval()
+        # m.requires_grad = False
+        m.track_running_stats = False
