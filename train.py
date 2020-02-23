@@ -17,6 +17,9 @@ if __name__ == '__main__':
     parser.add_argument("-b", "--batch_size", help="batch size", default=96, type=int)
     parser.add_argument("-w", "--num_workers", help="number of workers", default=3, type=int)
     parser.add_argument("-d", "--data_mode", help="databases: [vgg, ms1m, emore, concat]", default='emore', type=str)
+    parser.add_argument("-s", "--save_per_epoch", help="num of times to save per epoch", default=2, type=int)
+    parser.add_argument("-r", "--resume", help="should we a resume an intterupted train", default=False, type=bool)
+    parser.add_argument("-r_name", "--resume_name", help="name of model to load from models dir", default='', type=str)
 
     # ganovich - added some parameters
     parser.add_argument("-n", "--n_models", help="how many duplicate nets to use. 1 leads to basic training, "
@@ -42,6 +45,9 @@ if __name__ == '__main__':
         conf.net_depth = args.net_depth
 
     # training param
+    conf.resume = args.resume
+    conf.fixed_str = args.resume_name.encode('unicode-escape').decode().replace('\\\\', '')
+    conf.save_per_epoch = args.save_per_epoch
     conf.data_mode = args.data_mode
     conf.cpu_mode = args.cpu_mode
     conf.device = torch.device("cuda:0" if (torch.cuda.is_available() and not conf.cpu_mode) else "cpu")
@@ -49,6 +55,7 @@ if __name__ == '__main__':
     conf.milestones = args.milestones
     conf.batch_size = args.batch_size
     conf.num_workers = args.num_workers
+    conf.save_per_epoch = 3
 
     # pearson param
     conf.alpha = args.alpha

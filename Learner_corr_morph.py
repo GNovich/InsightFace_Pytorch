@@ -70,7 +70,7 @@ class face_learner(object):
             print('optimizers generated')
             self.board_loss_every = len(self.loader) // 100
             self.evaluate_every = len(self.loader) // 10
-            self.save_every = len(self.loader) // 5
+            self.save_every = len(self.loader) // conf.save_per_epoch
             self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(
                 self.loader.dataset.root.parent)
         else:
@@ -107,12 +107,23 @@ class face_learner(object):
         else:
             save_path = conf.model_path
 
+        def load_fix(target_path):
+            a = torch.load(target_path)
+            fixed_a = {k.split('module.')[-1]: a[k] for k in a}
+            torch.save(fixed_a, target_path)
+
         for mod_num in range(conf.n_models):
-            self.models[mod_num].load_state_dict(torch.load(save_path / 'model_{}_{}'.format(mod_num, fixed_str)))
+            target_path = save_path / 'model_{}_{}'.format(mod_num, fixed_str)
+            load_fix(target_path)
+            self.models[mod_num].load_state_dict(torch.load(target_path))
         if not model_only:
             for mod_num in range(conf.n_models):
-                self.heads[mod_num].load_state_dict(torch.load(save_path / 'head_{}_{}'.format(mod_num, fixed_str)))
-            self.optimizer.load_state_dict(torch.load(save_path / 'optimizer_{}'.format(fixed_str)))
+                target_path = save_path / 'head_{}_{}'.format(mod_num, fixed_str)
+                load_fix(target_path)
+                self.heads[mod_num].load_state_dict(torch.load(target_path))
+            target_path = save_path / 'optimizer_{}'.format(fixed_str)
+            load_fix(target_path)
+            self.optimizer.load_state_dict(torch.load(target_path))
 
     def board_val(self, db_name, accuracy, best_threshold, roc_curve_tensor):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
@@ -268,6 +279,18 @@ class face_learner(object):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
 
+            if conf.resume:
+                if not conf.fixed_str:
+                    raise ValueError('must input fixed_str parameter!')
+                # note if bach_size has changed - step and epoch would not match
+                # note incomplete epoch will restart
+                self.load_state(conf, conf.fixed_str, from_save_folder=False)
+                self.step = int(conf.fixed_str.split('_')[-2].split(':')[1]) + 1
+                start_epoch = self.step // len(self.loader)
+                self.step = start_epoch * len(self.loader) + 1
+                print('loading model at epoch {} done!'.format(start_epoch))
+                print(self.optimizer)
+
             # ganovich mult. gpu. fix. start. based on: https://github.com/TreB1eN/InsightFace_Pytorch/issues/32
             if not conf.cpu_mode:
                 self.models[model_num] = torch.nn.DataParallel(self.models[model_num], device_ids=[0, 1, 2, 3])
@@ -279,7 +302,8 @@ class face_learner(object):
         running_morph_loss = 0.
         morph_iter = iter(self.morph_loader)
         morph_load = bool(conf.morph_dir)
-        for e in range(epochs):
+        epoch_iter = range(epochs) if not conf.resume else range(start_epoch, epochs)
+        for e in epoch_iter:
             print('epoch {} started'.format(e))
             if e == self.milestones[0]:
                 self.schedule_lr()
