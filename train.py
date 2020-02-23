@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser.add_argument("-b", "--batch_size", help="batch size", default=96, type=int)
     parser.add_argument("-w", "--num_workers", help="number of workers", default=3, type=int)
     parser.add_argument("-d", "--data_mode", help="databases: [vgg, ms1m, emore, concat]", default='emore', type=str)
-    parser.add_argument("-s", "--save_per_epoch", help="num of times to save per epoch", default=2, type=int)
+    parser.add_argument("-s", "--save_per_epoch", help="num of times to save per epoch", default=1, type=int)
     parser.add_argument("-r", "--resume", help="should we a resume an intterupted train", default=False, type=bool)
     parser.add_argument("-r_name", "--resume_name", help="name of model to load from models dir", default='', type=str)
 
