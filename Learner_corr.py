@@ -11,7 +11,6 @@ from utils import get_time, gen_plot, hflip_batch, separate_bn_paras
 from PIL import Image
 from torchvision import transforms as trans
 import math
-import bcolz
 plt.switch_backend('agg')
 
 
@@ -128,7 +127,6 @@ class face_learner(object):
             load_fix(target_path)
             self.optimizer.load_state_dict(torch.load(target_path))
 
-
     def board_val(self, db_name, accuracy, best_threshold, roc_curve_tensor):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
         self.writer.add_scalar('{}_best_threshold'.format(db_name), best_threshold, self.step)
@@ -188,8 +186,8 @@ class face_learner(object):
 
             imgs = imgs.to(conf.device)
             labels = labels.to(conf.device)
-            batch_num += 1
 
+            batch_num += 1
             self.optimizer.zero_grad()
 
             # calc embeddings
@@ -199,6 +197,7 @@ class face_learner(object):
                 theta = head(model(imgs), labels)
                 thetas.append(theta)
                 joint_losses.append(conf.ce_loss(theta, labels))
+            joint_losses = sum(joint_losses) / len(joint_losses)
 
             # calc loss
             if conf.pearson:
@@ -268,7 +267,7 @@ class face_learner(object):
             # ganovich mult. gpu. fix. end.
 
         running_loss = 0.
-        running_pearson_loss = 0.  # ganovich pearson loss
+        running_pearson_loss = 0.
         running_ensemble_loss = 0.
         epoch_iter = range(epochs) if not conf.resume else range(start_epoch, epochs)
         for e in epoch_iter:
@@ -279,7 +278,7 @@ class face_learner(object):
                 self.schedule_lr()
             if e == self.milestones[2]:
                 self.schedule_lr()
-            for imgs, labels in tqdm(iter(self.loader)):
+            for imgs, labels in tqdm(self.loader):
                 imgs = imgs.to(conf.device)
                 labels = labels.to(conf.device)
                 self.optimizer.zero_grad()
@@ -287,11 +286,11 @@ class face_learner(object):
                 # calc embeddings
                 thetas = []
                 joint_losses = []
-                for modle, head in zip(self.models, self.heads):
-                    theta = head(modle(imgs), labels)
+                for model, head in zip(self.models, self.heads):
+                    theta = head(model(imgs), labels)
                     thetas.append(theta)
                     joint_losses.append(conf.ce_loss(theta, labels))
-                joint_losses = sum(joint_losses) / len(joint_losses)
+                joint_losses = sum(joint_losses) / max(len(joint_losses), 1)
 
                 # calc loss
                 if conf.pearson:

@@ -12,8 +12,6 @@ from PIL import Image
 from torchvision import transforms as trans
 import math
 from Pearson import set_bn_eval
-import bcolz
-from itertools import zip_longest
 plt.switch_backend('agg')
 
 
@@ -27,7 +25,6 @@ class face_learner(object):
         else:
             self.models = [Backbone(conf.net_depth, conf.drop_ratio, conf.net_mode).to(conf.device) for _ in
                            range(conf.n_models)]
-
             print('{}_{} models generated'.format(conf.net_mode, conf.net_depth))
 
         self.inference = inference
@@ -47,24 +44,33 @@ class face_learner(object):
 
             print('two model heads generated')
 
-            paras_only_bn, paras_wo_bn = separate_bn_paras(self.models)  # already supports list!
+            paras_only_bn = []
+            paras_wo_bn = []
+            for model in self.models:
+                paras_only_bn_, paras_wo_bn_ = separate_bn_paras(model)
+                paras_only_bn.append(paras_only_bn_)
+                paras_wo_bn.append(paras_wo_bn_)
 
             if conf.use_mobilfacenet:
                 self.optimizer = optim.SGD([
-                                               {'params': paras_wo_bn[:-1], 'weight_decay': 4e-5},
-                                               {'params': paras_only_bn}
+                                               {'params': paras_only_bn[model_num]}
+                                               for model_num in range(conf.n_models)
                                            ] + [
-                                               {'params': [paras_wo_bn[-1]] + [self.heads[head_num].kernel],
+                                               {'params': paras_wo_bn[model_num][:-1], 'weight_decay': 4e-5}
+                                               for model_num in range(conf.n_models)
+                                           ] + [
+                                               {'params': [paras_wo_bn[head_num][-1]] + [self.heads[head_num].kernel],
                                                 'weight_decay': 4e-4}
                                                for head_num in range(conf.n_models)
                                            ], lr=conf.lr, momentum=conf.momentum)
             else:
                 self.optimizer = optim.SGD([
-                                               {'params': paras_only_bn}
-                                           ] + [
-                                               {'params': paras_wo_bn + [self.heads[head_num].kernel],
+                                               {'params': paras_wo_bn[head_num] + [self.heads[head_num].kernel],
                                                 'weight_decay': 5e-4}
                                                for head_num in range(conf.n_models)
+                                           ] + [
+                                               {'params': paras_only_bn[model_num]}
+                                               for model_num in range(conf.n_models)
                                            ], lr=conf.lr, momentum=conf.momentum)
             print(self.optimizer)
             # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
@@ -185,7 +191,7 @@ class face_learner(object):
         log_lrs = []
         morph_iter = iter(self.morph_loader)
         morph_load = bool(conf.morph_dir)
-        for i, (imgs, labels) in tqdm(enumerate(self.loader), total=num):  # TODO expand to morph loader
+        for i, (imgs, labels) in tqdm(enumerate(self.loader), total=num):
 
             imgs = imgs.to(conf.device)
             labels = labels.to(conf.device)
@@ -211,11 +217,9 @@ class face_learner(object):
             joint_losses = []
             morph_thetas = []
             for model, head in zip(self.models, self.heads):
-                embedding = model(imgs)
-                theta = head(embedding, labels)
+                theta = head(model(imgs), labels)
                 thetas.append(theta)
                 joint_losses.append(conf.ce_loss(theta, labels))
-
                 if use_morph:  # use all modoles execpt the 1st
                     morph_thetas.append(head(model(morphs), labels))
 
@@ -225,7 +229,7 @@ class face_learner(object):
             # calc loss
             if conf.pearson:
                 outputs = torch.stack(thetas)
-                pearson_corr_models_loss = conf.pearson_loss(outputs, labels, apply_topk=False)
+                pearson_corr_models_loss = conf.pearson_loss(outputs, labels)
                 alpha = conf.alpha
                 loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
             elif conf.joint_mean:
@@ -302,6 +306,7 @@ class face_learner(object):
 
         running_loss = 0.
         running_pearson_loss = 0.
+        running_ensemble_loss = 0.
         running_morph_loss = 0.
         morph_iter = iter(self.morph_loader)
         morph_load = bool(conf.morph_dir)
@@ -339,27 +344,24 @@ class face_learner(object):
                 joint_losses = []
                 morph_thetas = []
                 for model, head in zip(self.models, self.heads):
-                    embedding = model(imgs)
-                    theta = head(embedding, labels)
+                    theta = head(model(imgs), labels)
                     thetas.append(theta)
                     joint_losses.append(conf.ce_loss(theta, labels))
-
                     if use_morph:
                         morph_thetas.append(head(model(morphs), morph_labels))
-
-                joint_losses = sum(joint_losses) / len(joint_losses)
+                joint_losses = sum(joint_losses) / max(len(joint_losses), 1)
 
                 # calc loss
                 if conf.pearson:
                     outputs = torch.stack(thetas)
-                    pearson_corr_models_loss = conf.pearson_loss(outputs, labels, apply_topk=False)
+                    pearson_corr_models_loss = conf.pearson_loss(outputs, labels)
                     running_pearson_loss += pearson_corr_models_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses + alpha * pearson_corr_models_loss
                 elif conf.joint_mean:
                     mean_output = torch.mean(torch.stack(thetas), 0)
                     ensemble_loss = conf.ce_loss(mean_output, labels)
-                    running_pearson_loss += ensemble_loss.item()
+                    running_ensemble_loss += ensemble_loss.item()
                     alpha = conf.alpha
                     loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
                 else:
@@ -368,14 +370,13 @@ class face_learner(object):
                 # Morph loss
                 # Make sure models do not produce the same results as the morphs
                 if use_morph:
-                    morph_loss = 0
+                    morph_loss = []
                     for morph_theta in morph_thetas:
                         mask = torch.nn.functional.one_hot(morph_labels, num_classes=morph_theta.shape[-1]).type(torch.bool)
-                        # outputs_morph = torch.softmax(morph_theta, 1)
                         correct_values = torch.masked_select(morph_theta, mask)
                         average_values = morph_theta.mean(1)
-                        morph_loss += conf.morph_loss(correct_values, average_values)
-                    morph_loss /= max(len(morph_thetas), 1)
+                        morph_loss.append(conf.morph_loss(correct_values, average_values))
+                    morph_loss = sum(morph_loss) / max(len(morph_thetas), 1)
                     morph_loss *= conf.morph_alpha
                     running_morph_loss += morph_loss.item()
                     loss = loss + morph_loss
@@ -393,6 +394,11 @@ class face_learner(object):
                         loss_board = running_pearson_loss / self.board_loss_every
                         self.writer.add_scalar('pearson_loss', loss_board, self.step)
                         running_pearson_loss = 0.
+
+                    if conf.joint_mean:
+                        loss_board = running_ensemble_loss / self.board_loss_every
+                        self.writer.add_scalar('ensemble_loss', loss_board, self.step)
+                        running_ensemble_loss = 0.
 
                     if conf.morph_dir:
                         loss_board = running_morph_loss / self.board_loss_every
