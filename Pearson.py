@@ -39,6 +39,11 @@ def pearsonr2d(x, y):
     return r_val
 
 
+def cross_entropy(pred, soft_targets):
+    logsoftmax = torch.nn.LogSoftmax()
+    return torch.mean(torch.sum(- soft_targets * logsoftmax(pred), 1))
+
+
 def ncl_loss(eta_hat):
     n_models, _, num_classes=eta_hat.shape
     eta_hat_softmax = torch.softmax(eta_hat,2)
