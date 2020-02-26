@@ -6,7 +6,7 @@ import argparse
 import torch
 from functools import partial
 from torch.nn import MSELoss
-from Pearson import pearson_corr_loss
+from Pearson import pearson_corr_loss, ncl_loss
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='for face verification')
@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("-a", "--alpha", help="balancing parameter", default=0, type=float)
     parser.add_argument("-t", "--sig_thresh", help="thresholding of the most correct class", default=0.9, type=float)
     parser.add_argument("-p", "--pearson", help="using pearson loss", default=False, type=bool)
+    parser.add_argument("-ncl", "--ncl", help="using Negative Correlation Loss", default=False, type=bool)
     parser.add_argument("-mean", "--joint_mean", help="using mean loss", default=False, type=bool)
     parser.add_argument("-morph_dir", "--morph_dir", help="use a morph directory", default='', type=str)
     parser.add_argument("-morph_a", "--morph_alpha", help="balance parameter", default=10., type=float)
@@ -63,6 +64,7 @@ if __name__ == '__main__':
     conf.n_models = args.n_models
     conf.pearson = args.pearson
     conf.joint_mean = args.joint_mean
+    conf.ncl = args.ncl
 
     # morph param
     conf.morph_alpha = args.morph_alpha
@@ -70,6 +72,7 @@ if __name__ == '__main__':
 
     # loss funcs
     conf.pearson_loss = partial(pearson_corr_loss, threshold=conf.sig_thresh)
+    conf.ncl_loss = partial(ncl_loss)
     conf.morph_loss = MSELoss()
 
     # create learner and go

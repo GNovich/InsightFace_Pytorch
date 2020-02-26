@@ -39,6 +39,24 @@ def pearsonr2d(x, y):
     return r_val
 
 
+def ncl_loss(eta_hat):
+    n_models, _, num_classes=eta_hat.shape
+    eta_hat_softmax = torch.softmax(eta_hat,2)
+
+    ncl_val = 0
+    for i in range(n_models):
+        for j in range(n_models):
+            if j == i:
+                continue
+
+            else:
+                pairwise_ncl_loss = cross_entropy(eta_hat[j],eta_hat_softmax[i])
+
+            ncl_val += pairwise_ncl_loss
+    ncl_val = -ncl_val /(n_models*(n_models-1))
+    return ncl_val
+
+
 def pearson_corr_loss(eta_hat, labels, threshold=0.9):
     n_models, _, num_classes = eta_hat.shape
     if n_models < 2:
