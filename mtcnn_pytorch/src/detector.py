@@ -4,7 +4,7 @@ from torch.autograd import Variable
 from .get_nets import PNet, RNet, ONet
 from .box_utils import nms, calibrate_box, get_image_boxes, convert_to_square
 from .first_stage import run_first_stage
-
+from Arc_coll_config import device
 
 def detect_faces(image, min_face_size=20.0,
                  thresholds=[0.6, 0.7, 0.8],
@@ -25,6 +25,11 @@ def detect_faces(image, min_face_size=20.0,
     pnet = PNet()
     rnet = RNet()
     onet = ONet()
+    # ganovich make sure everything runs on the same thing
+    pnet = torch.nn.DataParallel(pnet, device_ids=[0, 1, 2, 3]).to(device)
+    rnet = torch.nn.DataParallel(rnet, device_ids=[0, 1, 2, 3]).to(device)
+    onet = torch.nn.DataParallel(onet, device_ids=[0, 1, 2, 3]).to(device)
+    # end
     onet.eval()
 
     # BUILD AN IMAGE PYRAMID
@@ -80,8 +85,8 @@ def detect_faces(image, min_face_size=20.0,
         img_boxes = torch.FloatTensor(img_boxes)
 
         output = rnet(img_boxes)
-        offsets = output[0].data.numpy()  # shape [n_boxes, 4]
-        probs = output[1].data.numpy()  # shape [n_boxes, 2]
+        offsets = output[0].data.cpu().numpy()  # shape [n_boxes, 4] # ganovich to cpu
+        probs = output[1].data.cpu().numpy()  # shape [n_boxes, 2] # ganovich to cpu
 
         keep = np.where(probs[:, 1] > thresholds[1])[0]
         bounding_boxes = bounding_boxes[keep]
@@ -101,9 +106,9 @@ def detect_faces(image, min_face_size=20.0,
             return [], []
         img_boxes = torch.FloatTensor(img_boxes)
         output = onet(img_boxes)
-        landmarks = output[0].data.numpy()  # shape [n_boxes, 10]
-        offsets = output[1].data.numpy()  # shape [n_boxes, 4]
-        probs = output[2].data.numpy()  # shape [n_boxes, 2]
+        landmarks = output[0].data.cpu().numpy()  # shape [n_boxes, 10]
+        offsets = output[1].data.cpu().numpy()  # shape [n_boxes, 4]
+        probs = output[2].data.cpu().numpy()  # shape [n_boxes, 2]
 
         keep = np.where(probs[:, 1] > thresholds[2])[0]
         bounding_boxes = bounding_boxes[keep]

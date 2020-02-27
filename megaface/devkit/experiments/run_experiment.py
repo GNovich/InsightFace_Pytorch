@@ -8,12 +8,14 @@ import sys
 import json
 import random
 import subprocess
+import tqdm
 
-MODEL = os.path.join('..', 'models', 'jb_identity.bin')
-IDENTIFICATION_EXE = os.path.join('..', 'bin', 'Identification')
-FUSE_RESULTS_EXE = os.path.join('..', 'bin', 'FuseResults')
-MEGAFACE_LIST_BASENAME = os.path.join('..', 'templatelists', 'megaface_features_list.json')
-PROBE_LIST_BASENAME = os.path.join('..', 'templatelists', 'facescrub_features_list.json')
+DEVKIT_PATH = 'data/megaface/devkit'
+MODEL = os.path.join(DEVKIT_PATH, 'models', 'jb_identity.bin')
+IDENTIFICATION_EXE = os.path.join(DEVKIT_PATH, 'bin', 'Identification')
+FUSE_RESULTS_EXE = os.path.join(DEVKIT_PATH, 'bin', 'FuseResults')
+MEGAFACE_LIST_BASENAME = os.path.join(DEVKIT_PATH, 'templatelists', 'megaface_features_list.json')
+PROBE_LIST_BASENAME = os.path.join(DEVKIT_PATH, 'templatelists', 'facescrub_features_list.json')
 
 
 def main():
@@ -33,7 +35,7 @@ def main():
                         help='(optional) Scoring model to use. Default: ../models/jb_identity.bin')
     parser.add_argument('-ns', '--num_sets',
                         help='Set to change number of sets to run on. Default: 1')
-    parser.add_argument('-d', '--delete_matrices', dest='delete_matrices', action='store_true',
+    parser.add_argument('-d', '--delete_matrices', dest='delete_matrices', default=False,
                         help='Deletes matrices used while computing results. Reduces space needed to run test.')
     parser.add_argument('-p', '--probe_list',
                         help='Set to use different probe list. Default: ../templatelists/facescrub_features_list.json')
@@ -55,6 +57,7 @@ def main():
     megaface_list_basename = os.path.join(args.distractor_list_path, os.path.basename(MEGAFACE_LIST_BASENAME))
     set_indices = range(1, int(num_sets) + 1)
 
+    os.chdir('../../../')
     assert os.path.exists(distractor_feature_path)
     assert os.path.exists(probe_feature_path)
     if not os.path.exists(out_root):
@@ -64,10 +67,9 @@ def main():
     other_out_root = os.path.join(out_root, "otherFiles")
 
     probe_name = os.path.basename(probe_list_basename).split('_')[0]
-    distractor_name = os.path.basename(megaface_list_basename).split('_')[0]
+    distractor_name = os.path.basename(distractor_feature_path)
 
     # Create feature lists for megaface for all sets and sizes and verifies all features exist
-    missing = False
     for index in set_indices:
         for size in sizes:
             print('Creating feature list of {} photos for set {}'.format(size, str(index)))
@@ -76,21 +78,18 @@ def main():
                 featureFile = json.load(fp)
                 path_list = featureFile["path"]
                 path_list_f = []
-                for i in range(len(path_list)):
+                for i in tqdm.tqdm(range(len(path_list)), total=len(path_list), desc='verifying files'):
                     path_list[i] = os.path.join(distractor_feature_path, path_list[i] + file_ending)
                     if (os.path.isfile(path_list[i])):
                         path_list_f.append(path_list[i])
-                        # print path_list[i] + " is missing"
-                        # missing = True
-                    if (i % 10000 == 0 and i > 0):
-                        print
-                        str(i) + " / " + str(len(path_list))
+                    else:
+                        pass
+                        # raise FileNotFoundError(path_list[i] + " is missing")
                 featureFile["path"] = path_list_f
+                print('Paths collected:', len(featureFile["path"]))
                 json.dump(featureFile, open(os.path.join(
                     other_out_root, '{}_features_{}_{}_{}'.format(distractor_name, alg_name, size, index)), 'w'),
                           sort_keys=True, indent=4)
-    if (missing):
-        sys.exit("Features are missing...")
 
     # Create feature list for probe set
     probeidx = 0
@@ -101,35 +100,42 @@ def main():
         id_list = featureFile["id"]
         path_list_f = []
         id_list_f = []
-        for i in range(len(path_list)):
-            path_list[i] = os.path.join(probe_feature_path, path_list[i].replace(' ', '_') + file_ending)
-            if (os.path.isfile(path_list[i])):
+        for i in tqdm.tqdm(range(len(path_list)), total=len(path_list), desc='Creating feature list for probe set'):
+            path_list[i] = os.path.join(probe_feature_path, path_list[i].replace(' ', '_'))
+            if 'facescrub' in probe_list_basename:
+                path_list[i] = path_list[i].replace('jpg', 'png').replace('jpeg', 'png').replace('JPG',
+                                                    'png').replace('PNG', 'png').replace('gif', 'png')
+            if 'png' not in path_list[i]:
+                path_list[i] += '.png'
+            path_list[i] += file_ending
+            if os.path.isfile(path_list[i]):
                 path_list_f.append(path_list[i])
                 id_list_f.append(id_list[i])
                 probelist.write(str(probeidx) + '\t' + id_list[i] + '\t' + path_list[i] + '\n')
                 probeidx += 1
-                # print path_list[i] + " is missing"
-                # missing = True
+            else:
+                pass
+                # raise FileNotFoundError(path_list[i] + " is missing")
+
         featureFile["path"] = path_list_f
         featureFile["id"] = id_list_f
+        print('Paths collected:', len(featureFile["path"]))
         json.dump(featureFile, open(os.path.join(
             other_out_root, '{}_features_{}'.format(probe_name, alg_name)), 'w'), sort_keys=True, indent=4)
         probe_feature_list = os.path.join(other_out_root, '{}_features_{}'.format(probe_name, alg_name))
     probelist.close()
-    if (missing):
-        sys.exit("Features are missing...")
 
     print('Running probe to probe comparison')
     probe_score_filename = os.path.join(
         other_out_root, '{}_{}_{}.bin'.format(probe_name, probe_name, alg_name))
-    proc = subprocess.Popen(
-        [IDENTIFICATION_EXE, model, "path", probe_feature_list, probe_feature_list, probe_score_filename])
+    proc = subprocess.Popen([IDENTIFICATION_EXE, model, "path", probe_feature_list, probe_feature_list, probe_score_filename])
     proc.communicate()
 
     for index in set_indices:
         for size in sizes:
             print('Running test with size {} images for set {}'.format(
                 str(size), str(index)))
+
             args = [IDENTIFICATION_EXE, model, "path",
                     os.path.join(other_out_root, '{}_features_{}_{}_{}'.format(distractor_name, alg_name, size, index)
                                  ), probe_feature_list, os.path.join(other_out_root,
@@ -137,6 +143,7 @@ def main():
                                                                                                  distractor_name,
                                                                                                  alg_name, str(size),
                                                                                                  str(index)))]
+
             proc = subprocess.Popen(args)
             proc.communicate()
 
@@ -154,7 +161,7 @@ def main():
             proc = subprocess.Popen(args)
             proc.communicate()
 
-            if (delete_matrices):
+            if delete_matrices:
                 os.remove(os.path.join(other_out_root, '{}_{}_{}_{}_{}.bin'.format(
                     probe_name, distractor_name, alg_name, str(size), str(index))))
 
