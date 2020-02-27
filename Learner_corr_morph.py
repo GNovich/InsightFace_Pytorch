@@ -182,7 +182,7 @@ class face_learner(object):
 
         for model in self.models:
             model.train()
-            if conf.morph_dir: set_bn_eval(model)
+            #if conf.morph_dir: set_bn_eval(model)
 
         avg_loss = 0.
         best_loss = 0.
@@ -292,7 +292,7 @@ class face_learner(object):
     def train(self, conf, epochs):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
-            if conf.morph_dir: set_bn_eval(self.models[model_num])
+            #if conf.morph_dir: set_bn_eval(self.models[model_num])
 
             if conf.resume:
                 if not conf.fixed_str:
@@ -438,7 +438,7 @@ class face_learner(object):
                                                                                    model_num=model_num)
                         self.board_val('mod_{}_cfp_fp'.format(model_num), accuracy, best_threshold, roc_curve_tensor)
                         self.models[model_num].train()
-                        if conf.morph_dir: set_bn_eval(self.models[model_num])
+                        #if conf.morph_dir: set_bn_eval(self.models[model_num])
                     if self.step % self.save_every == 0 and self.step != 0:
                         self.save_state(conf, accuracy)
 
