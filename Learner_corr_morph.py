@@ -217,14 +217,22 @@ class face_learner(object):
             joint_losses = []
             morph_thetas = []
             for model, head in zip(self.models, self.heads):
-                theta = head(model(imgs), labels)
-                thetas.append(theta)
-                joint_losses.append(conf.ce_loss(theta, labels))
-                if use_morph:  # use all modoles execpt the 1st
-                    morph_thetas.append(head(model(morphs), labels))
+                if use_morph:
+                    cat_inputs = torch.cat([imgs, morphs])
+                    cat_emb = model(cat_inputs)
+                    emb = cat_emb[:cat_inputs.shape[0], :]
+                    emb_morph = cat_emb[cat_inputs.shape[0]:, :]
+                    theta = head(emb, labels)
+                    theta_morph = head(emb_morph, morph_labels)
+                    thetas.append(theta)
+                    morph_thetas.append(theta_morph)
+                    joint_losses.append(conf.ce_loss(theta, labels))
+                else:
+                    theta = head(model(imgs), labels)
+                    thetas.append(theta)
+                    joint_losses.append(conf.ce_loss(theta, labels))
 
             joint_losses = sum(joint_losses) / len(joint_losses)
-            morph_thetas = morph_thetas[1:]
 
             # calc loss
             if conf.pearson:
