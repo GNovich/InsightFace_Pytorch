@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 import struct
-
+from Pearson import set_bn_eval
 import cv2 as cv
 import numpy as np
 import torch
@@ -47,15 +47,13 @@ def crop(path, oldkey, newkey):
     print('{} images were cropped successfully.'.format(filecounter))
 
 
-def gen_feature(path):
+def gen_feature(path, models, batch_size=256, ext='.png', suffix='0'):
     print('gen features {}...'.format(path))
     # Preprocess the total files count
     files = []
-    for filepath in walkdir(path, '.jpg'):
+    for filepath in walkdir(path, ext):
         files.append(filepath)
     file_count = len(files)
-
-    batch_size = 128
 
     with torch.no_grad():
         for start_idx in tqdm(range(0, file_count, batch_size)):
@@ -68,11 +66,14 @@ def gen_feature(path):
                 filepath = files[i]
                 imgs[idx] = get_image(cv.imread(filepath, True), transformer)
 
-            features = model(imgs.to(device)).cpu().numpy()
+            if len(models) == 1:
+                features = models[0](imgs.to(device)).cpu().numpy()
+            else:  # MEAN emmbeding
+                features = (sum([model(imgs.to(device)) for model in models]) / len(models)).cpu().numpy()
             for idx in range(0, length):
                 i = start_idx + idx
                 filepath = files[i]
-                tarfile = filepath + '_0.bin'
+                tarfile = filepath + '_' + suffix + '.bin'
                 feature = features[idx]
                 write_feature(tarfile, feature / np.linalg.norm(feature))
 
@@ -98,17 +99,23 @@ def write_feature(filename, m):
     f.write(m.data)
 
 
-def remove_noise():
-    for line in open('megaface/megaface_noises.txt', 'r'):
-        filename = 'megaface/megaface_images/' + line.strip() + '_0.bin'
+def remove_noise(ext='0'):
+    for line in open('data/megaface/megaface_noises.txt', 'r'):
+        filename = 'data/megaface/megaface_images_aligned/' + line.strip() + '_' + ext +'.bin'
+        if os.path.exists(filename):
+            print(filename)
+            os.remove(filename)
+
+    for line in open('data/megaface/megaface_noises.txt', 'r'):
+        filename = 'data/megaface/megaface_images/' + line.strip() + '_' + ext +'.bin'
         if os.path.exists(filename):
             print(filename)
             os.remove(filename)
 
     noise = set()
-    for line in open('megaface/facescrub_noises.txt', 'r'):
-        noise.add((line.strip().replace('png', 'jpg') + '0.bin').replace('_', '').replace(' ', ''))
-    for root, dirs, files in os.walk('megaface/facescrub_images'):
+    for line in open('data/megaface/facescrub_noises.txt', 'r'):
+        noise.add((line.strip() + ext + '.bin').replace('_', '').replace(' ', ''))
+    for root, dirs, files in os.walk('data/megaface/facescrub_images'):
         for f in files:
             if f.replace('_', '').replace(' ', '') in noise:
                 filename = os.path.join(root, f)
@@ -118,8 +125,8 @@ def remove_noise():
 
 
 def test():
-    root1 = '/root/lin/data/FaceScrub_aligned/Benicio Del Toro'
-    root2 = '/root/lin/data/FaceScrub_aligned/Ben Kingsley'
+    root1 = 'data/FaceScrub_aligned/Benicio Del Toro'
+    root2 = 'data/FaceScrub_aligned/Ben Kingsley'
     for f1 in os.listdir(root1):
         for f2 in os.listdir(root2):
             if f1.lower().endswith('.bin') and f2.lower().endswith('.bin'):
@@ -151,27 +158,49 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train face network')
     # general
     parser.add_argument('--action', default='crop_megaface', help='action')
-    parser.add_argument('--model', default='', type=str)
+    parser.add_argument('--models', nargs='+', type=str)
+    parser.add_argument('--suffix', default='0', help="names of emmbedding will be \'fname_suffix.bin\'", type=str)
+    parser.add_argument('--batch_size', default=256, help="batch size", type=int)
     args = parser.parse_args()
     return args
+
+
+def load_fix(target_path):
+    a = torch.load(target_path)
+    fixed_a = {k.split('module.')[-1]: a[k] for k in a}
+    torch.save(fixed_a, target_path)
 
 
 if __name__ == '__main__':
     args = parse_args()
     if args.action == 'crop_megaface':
-        crop('megaface/megaface_images', 'MegaFace', 'MegaFace_aligned')
+        crop('data/megaface/megaface_images', 'megaface_images', 'megaface_images_aligned')
     elif args.action == 'crop_facescrub':
-        crop('megaface/facescrub_images', 'facescrub', 'facescrub_aligned')
+        crop('data/megaface/facescrub_images', 'facescrub_images', 'facescrub_images_aligned')
     elif args.action == 'gen_features':
-        model_path = args.model
-        print('loading model: {}...'.format(model_path))
-        model = torch.load(model_path)
-        model = model.to(device)
-        model.eval()
-        transformer = data_transforms['val']
+        models_path = args.models
+        print('loading model: {}...'.format(models_path))
+        from model import Backbone
+        from config import get_config
+        conf = get_config()
+        models = []
+        for model_path in models_path:
+            model = Backbone(conf.net_depth, conf.drop_ratio, conf.net_mode).to(device)
+            load_fix(model_path)
+            model.load_state_dict(torch.load(model_path))
+            model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3]).to(device)
+            if 'morph' in models_path:
+                set_bn_eval(model)
+            else:
+                model.eval()
+            models.append(model)
+        transformer = data_transforms['ir_se50' if ('ir_se50' in models_path) else 'val']
 
-        gen_feature('megaface/facescrub_images')
-        gen_feature('megaface/megaface_images_aligned')
-        remove_noise()
+        gen_feature('data/megaface/facescrub_images', models, batch_size=args.batch_size, ext='.png', suffix=args.suffix)
+        # gen_feature('data/megaface/megaface_images_aligned', models, batch_size=args.batch_size, ext='.jpg', suffix=args.suffix)
+        gen_feature('data/megaface/megaface_images', models, batch_size=args.batch_size, ext='.jpg', suffix=args.suffix)
+        remove_noise(args.suffix)
+    elif args.action == 'remove_noise':
+        remove_noise(args.suffix)
     elif args.action == 'pngtojpg':
-        pngtojpg('megaface/facescrub_images')
+        pngtojpg('data/megaface/facescrub_images')
