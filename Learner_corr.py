@@ -212,7 +212,7 @@ class face_learner(object):
                 loss = (1 - alpha) * joint_losses * 0.5 + alpha * ensemble_loss
             elif conf.ncl:
                 outputs = torch.stack(thetas)
-                ncl_models_loss = ncl_loss(outputs)
+                ncl_models_loss = conf.ncl_loss(outputs)
                 alpha = conf.alpha
                 loss = (1 - alpha) * joint_losses + alpha * ncl_models_loss
             else:
