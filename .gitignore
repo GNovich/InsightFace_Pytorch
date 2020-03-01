@@ -3,3 +3,4 @@ work_space/*
 __pycache__/
 results/*
 .ipynb_*
+megaface_facescrub_insightface/*

@@ -18,32 +18,7 @@ MEGAFACE_LIST_BASENAME = os.path.join(DEVKIT_PATH, 'templatelists', 'megaface_fe
 PROBE_LIST_BASENAME = os.path.join(DEVKIT_PATH, 'templatelists', 'facescrub_features_list.json')
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Runs the MegaFace challenge experiment with the provided feature files')
-    parser.add_argument('distractor_feature_path',
-                        help='Path to MegaFace Features')
-    parser.add_argument('probe_feature_path',
-                        help='Path to FaceScrub Features')
-    parser.add_argument('file_ending',
-                        help='Ending appended to original photo files. i.e. 11084833664_0.jpg_LBP_100x100.bin => _LBP_100x100.bin')
-    parser.add_argument('out_root',
-                        help='File output directory, outputs results files, score matrix files, and feature lists used')
-    parser.add_argument('-s', '--sizes', type=int, nargs='+',
-                        help='(optional) Size(s) of feature list(s) to create. Default: 10 100 1000 10000 100000 1000000')
-    parser.add_argument('-m', '--model', type=str,
-                        help='(optional) Scoring model to use. Default: ../models/jb_identity.bin')
-    parser.add_argument('-ns', '--num_sets',
-                        help='Set to change number of sets to run on. Default: 1')
-    parser.add_argument('-d', '--delete_matrices', dest='delete_matrices', default=False,
-                        help='Deletes matrices used while computing results. Reduces space needed to run test.')
-    parser.add_argument('-p', '--probe_list',
-                        help='Set to use different probe list. Default: ../templatelists/facescrub_features_list.json')
-    parser.add_argument('-dlp', '--distractor_list_path', help='Set to change path used for distractor lists')
-    parser.set_defaults(model=MODEL, num_sets=1, sizes=[10, 100, 1000, 10000, 100000, 1000000],
-                        probe_list=PROBE_LIST_BASENAME, distractor_list_path=os.path.dirname(MEGAFACE_LIST_BASENAME))
-    args = parser.parse_args()
-
+def main(args):
     distractor_feature_path = args.distractor_feature_path
     out_root = args.out_root
     probe_feature_path = args.probe_feature_path
@@ -167,4 +142,28 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(
+        description='Runs the MegaFace challenge experiment with the provided feature files')
+    parser.add_argument('distractor_feature_path',
+                        help='Path to MegaFace Features')
+    parser.add_argument('probe_feature_path',
+                        help='Path to FaceScrub Features')
+    parser.add_argument('file_ending',
+                        help='Ending appended to original photo files. i.e. 11084833664_0.jpg_LBP_100x100.bin => _LBP_100x100.bin')
+    parser.add_argument('out_root',
+                        help='File output directory, outputs results files, score matrix files, and feature lists used')
+    parser.add_argument('-s', '--sizes', type=int, nargs='+',
+                        help='(optional) Size(s) of feature list(s) to create. Default: 10 100 1000 10000 100000 1000000')
+    parser.add_argument('-m', '--model', type=str,
+                        help='(optional) Scoring model to use. Default: ../models/jb_identity.bin')
+    parser.add_argument('-ns', '--num_sets',
+                        help='Set to change number of sets to run on. Default: 1')
+    parser.add_argument('-d', '--delete_matrices', dest='delete_matrices', default=False,
+                        help='Deletes matrices used while computing results. Reduces space needed to run test.')
+    parser.add_argument('-p', '--probe_list',
+                        help='Set to use different probe list. Default: ../templatelists/facescrub_features_list.json')
+    parser.add_argument('-dlp', '--distractor_list_path', help='Set to change path used for distractor lists')
+    parser.set_defaults(model=MODEL, num_sets=1, sizes=[10, 100, 1000, 10000, 100000, 1000000],
+                        probe_list=PROBE_LIST_BASENAME, distractor_list_path=os.path.dirname(MEGAFACE_LIST_BASENAME))
+    args = parser.parse_args()
+    main(args)

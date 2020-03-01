@@ -47,7 +47,7 @@ def crop(path, oldkey, newkey):
     print('{} images were cropped successfully.'.format(filecounter))
 
 
-def gen_feature(path, models, batch_size=256, ext='.png', suffix='0'):
+def gen_feature(path, models, transformer, batch_size=256, ext='.png', suffix='0'):
     print('gen features {}...'.format(path))
     # Preprocess the total files count
     files = []
@@ -196,9 +196,9 @@ if __name__ == '__main__':
             models.append(model)
         transformer = data_transforms['ir_se50' if ('ir_se50' in models_path) else 'val']
 
-        gen_feature('data/megaface/facescrub_images', models, batch_size=args.batch_size, ext='.png', suffix=args.suffix)
+        gen_feature('data/megaface/facescrub_images', models, transformer, batch_size=args.batch_size, ext='.png', suffix=args.suffix)
         # gen_feature('data/megaface/megaface_images_aligned', models, batch_size=args.batch_size, ext='.jpg', suffix=args.suffix)
-        gen_feature('data/megaface/megaface_images', models, batch_size=args.batch_size, ext='.jpg', suffix=args.suffix)
+        gen_feature('data/megaface/megaface_images', models, transformer, batch_size=args.batch_size, ext='.jpg', suffix=args.suffix)
         remove_noise(args.suffix)
     elif args.action == 'remove_noise':
         remove_noise(args.suffix)
