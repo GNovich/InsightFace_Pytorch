@@ -182,7 +182,7 @@ class face_learner(object):
 
         for model in self.models:
             model.train()
-            if conf.morph_dir: set_bn_eval(model)
+            #if conf.morph_dir: set_bn_eval(model)
 
         avg_loss = 0.
         best_loss = 0.
@@ -217,14 +217,22 @@ class face_learner(object):
             joint_losses = []
             morph_thetas = []
             for model, head in zip(self.models, self.heads):
-                theta = head(model(imgs), labels)
-                thetas.append(theta)
-                joint_losses.append(conf.ce_loss(theta, labels))
-                if use_morph:  # use all modoles execpt the 1st
-                    morph_thetas.append(head(model(morphs), labels))
+                if use_morph:
+                    cat_inputs = torch.cat([imgs, morphs])
+                    cat_emb = model(cat_inputs)
+                    emb = cat_emb[:imgs.shape[0], :]
+                    emb_morph = cat_emb[imgs.shape[0]:, :]
+                    theta = head(emb, labels)
+                    theta_morph = head(emb_morph, morph_labels)
+                    thetas.append(theta)
+                    morph_thetas.append(theta_morph)
+                    joint_losses.append(conf.ce_loss(theta, labels))
+                else:
+                    theta = head(model(imgs), labels)
+                    thetas.append(theta)
+                    joint_losses.append(conf.ce_loss(theta, labels))
 
             joint_losses = sum(joint_losses) / len(joint_losses)
-            morph_thetas = morph_thetas[1:]
 
             # calc loss
             if conf.pearson:
@@ -284,7 +292,7 @@ class face_learner(object):
     def train(self, conf, epochs):
         for model_num in range(conf.n_models):
             self.models[model_num].train()
-            if conf.morph_dir: set_bn_eval(self.models[model_num])
+            #if conf.morph_dir: set_bn_eval(self.models[model_num])
 
             if conf.resume:
                 if not conf.fixed_str:
@@ -344,11 +352,21 @@ class face_learner(object):
                 joint_losses = []
                 morph_thetas = []
                 for model, head in zip(self.models, self.heads):
-                    theta = head(model(imgs), labels)
-                    thetas.append(theta)
-                    joint_losses.append(conf.ce_loss(theta, labels))
                     if use_morph:
-                        morph_thetas.append(head(model(morphs), morph_labels))
+                        cat_inputs = torch.cat([imgs, morphs])
+                        cat_emb = model(cat_inputs)
+                        emb = cat_emb[:imgs.shape[0], :]
+                        emb_morph = cat_emb[imgs.shape[0]:, :]
+                        theta = head(emb, labels)
+                        theta_morph = head(emb_morph, morph_labels)
+                        thetas.append(theta)
+                        morph_thetas.append(theta_morph)
+                        joint_losses.append(conf.ce_loss(theta, labels))
+                    else:
+                        theta = head(model(imgs), labels)
+                        thetas.append(theta)
+                        joint_losses.append(conf.ce_loss(theta, labels))
+
                 joint_losses = sum(joint_losses) / max(len(joint_losses), 1)
 
                 # calc loss
@@ -420,7 +438,7 @@ class face_learner(object):
                                                                                    model_num=model_num)
                         self.board_val('mod_{}_cfp_fp'.format(model_num), accuracy, best_threshold, roc_curve_tensor)
                         self.models[model_num].train()
-                        if conf.morph_dir: set_bn_eval(self.models[model_num])
+                        #if conf.morph_dir: set_bn_eval(self.models[model_num])
                     if self.step % self.save_every == 0 and self.step != 0:
                         self.save_state(conf, accuracy)
 
